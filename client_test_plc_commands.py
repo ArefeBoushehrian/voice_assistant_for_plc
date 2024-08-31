@@ -1,67 +1,67 @@
 import sounddevice as sd
-import numpy as np
+import wave
 import requests
-import io
+import os
 import playsound
 
 # Configuration
 SERVER_URL = 'http://192.168.1.13:8888/audio'  # Replace with your server IP and port
 RATE = 44100
-CHUNK_SIZE = 4096  # Size of each chunk in bytes
+CHANNELS = 1
+FILENAME = 'recorded_audio.wav'
 
-def record_and_send_audio():
+def record_audio():
     print("Recording...")
-    audio_data = io.BytesIO()
+    audio_data = sd.rec(int(10 * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+    sd.wait()  # Wait until recording is finished
+    print("Finished recording.")
     
-    def callback(indata, frames, time, status):
-        if status:
-            print(status, flush=True)
-        audio_data.write(indata.tobytes())
+    # Save the recorded audio to a .wav file
+    with wave.open(FILENAME, 'wb') as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)  # 16-bit audio
+        wf.setframerate(RATE)
+        wf.writeframes(audio_data.tobytes())
     
-    with sd.InputStream(samplerate=RATE, channels=1, dtype='int16', callback=callback):
-        while True:
-            command = input("Type 'end' to stop recording and send audio, or 'exit' to quit: ").strip().lower()
-            if command == 'end':
-                print("Sending audio to server...")
-                audio_data.seek(0)
-                send_audio_chunks(audio_data.getvalue())
-                
-                print("Waiting for response...")
-                response_audio = send_end_signal()
-                save_and_play_audio(response_audio)
-                break
-            elif command == 'exit':
-                print("Exiting...")
-                break
+    return FILENAME
 
-def send_audio_chunks(audio_data):
-    # Send audio data in chunks
-    chunk_size = CHUNK_SIZE
-    for i in range(0, len(audio_data), chunk_size):
-        chunk = audio_data[i:i + chunk_size]
-        response = requests.post(SERVER_URL, data=chunk)
-        if response.status_code != 200:
-            print(f"Failed to send audio chunk. Status code: {response.status_code}")
-            return
-
-def send_end_signal():
-    # Send 'END' signal to server
-    response = requests.post(SERVER_URL, data=b'END')
+def send_wav_to_server(file_path):
+    with open(file_path, 'rb') as f:
+        response = requests.post(SERVER_URL, files={'file': f})
+    
     if response.status_code == 200:
+        print("Audio file successfully sent to server.")
         return response.content
     else:
-        print(f"Failed to send 'END' signal. Status code: {response.status_code}")
+        print(f"Failed to send audio file. Status code: {response.status_code}")
         return None
 
 def save_and_play_audio(audio_data):
     if audio_data:
-        with open('response_client.wav', 'wb') as f:
+        response_filename = 'response_from_server.wav'
+        with open(response_filename, 'wb') as f:
             f.write(audio_data)
         print("Playing response audio...")
-        
-        playsound.playsound('response_client.wav', block=True)
+        playsound.playsound(response_filename, block=True)
+        os.remove(response_filename)  # Optionally delete the response file after playing
     else:
         print("No audio data received.")
 
 if __name__ == "__main__":
-    record_and_send_audio()
+    while True:
+        command = input("Type 'start' to begin recording, 'end' to send, or 'exit' to quit: ").strip().lower()
+        
+        if command == 'start':
+            file_path = record_audio()
+        elif command == 'end':
+            if os.path.exists(FILENAME):
+                response_audio = send_wav_to_server(FILENAME)
+                save_and_play_audio(response_audio)
+                os.remove(FILENAME)  # Delete the recorded file after sending
+            else:
+                print("No audio file found. Please record first.")
+        elif command == 'exit':
+            print("Exiting...")
+            break
+        else:
+            print("Unknown command. Please type 'start', 'end', or 'exit'.")
