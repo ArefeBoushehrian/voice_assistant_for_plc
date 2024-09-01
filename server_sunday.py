@@ -69,12 +69,12 @@ def writeMemory(start_address,length,value):
 """
 
 def connect_to_plc(ip, port):
-    client = ModbusTcpClient(ip, port=port)
-    if client.connect():
+    client_plc = ModbusTcpClient(ip, port=port)
+    if client_plc.connect():
         print("Connected to PLC")
     else:
         print("Failed to connect to PLC")
-    return client
+    return client_plc
 
 def read_register(client, address):
     try:
@@ -102,7 +102,7 @@ def write_register(client, address, value):
 
 def set_command(command_bit, value):
     # Read the command area (memory bits)
-    write_register(client, command_bit, value)
+    write_register(client_plc, command_bit, value)
 
 def turn_on_light():
     set_command(0, True)  # Set M0.0 to True
@@ -223,8 +223,8 @@ if __name__ == '__main__':
     ip = "192.168.1.17"  # Replace with your PLC's IP address
     port = 139  # Modbus TCP port
 
-    client = connect_to_plc(ip, port)
+    client_plc = connect_to_plc(ip, port)
     app.run(host='0.0.0.0', port=8888)
     #plc.disconnect()
-    client.close()
+    client_plc.close()
     print("Disconnected from PLCSIM")
